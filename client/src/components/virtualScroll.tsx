@@ -1,106 +1,104 @@
-import React from 'react';
+import React, { Component, ReactEventHandler, ReactFragment } from 'react'
+import styled from "styled-components";
 
-interface VirtualScrollProps{
-    scrollContainerHeight: number,
-    totalNumberOfRows: number,
-    rows: Array<any>,
-    rowHeight: number,
-    rowRenderer: Function 
+const Viewport = styled.div`
+width: 150px;
+overflow-y: auto;
+`;
+
+export interface Settings{
+  itemHeight: number,
+    amount: number,
+    tolerance: number,
+    minIndex: number,
+    maxIndex: number,
+    startIndex: number
+}
+interface ScrollerProps{
+  settings:Settings;
+  row:any;
+  get:any;
+}
+interface ScrollerState {
+  settings:Settings,
+  viewportHeight:number,
+  totalHeight:number,
+  toleranceHeight:number,
+  bufferHeight:number,
+  bufferedItems:number,
+  topPaddingHeight:number,
+  bottomPaddingHeight:number,
+  initialPosition:number,
+  data: []
+}
+const setInitialState = (settings:any):any => {
+  const { itemHeight, amount, tolerance, minIndex, maxIndex, startIndex } = settings
+  const viewportHeight = amount * itemHeight
+  const totalHeight = (maxIndex - minIndex + 1) * itemHeight
+  const toleranceHeight = tolerance * itemHeight
+  const bufferHeight = viewportHeight + 2 * toleranceHeight
+  const bufferedItems = amount + 2 * tolerance
+  const itemsAbove = startIndex - tolerance - minIndex
+  const topPaddingHeight = itemsAbove * itemHeight
+  const bottomPaddingHeight = totalHeight - topPaddingHeight
+  const initialPosition = topPaddingHeight + toleranceHeight
+  return {
+    settings,
+    viewportHeight,
+    totalHeight,
+    toleranceHeight,
+    bufferHeight,
+    bufferedItems,
+    topPaddingHeight,
+    bottomPaddingHeight,
+    initialPosition,
+    data: []
+  }
 }
 
-interface VirtualScrollState{
-    contentHeight: number,
-    startRowsFrom: number,
-    endRowsTo: number,
-    rowsThatCanBeShownInVisibleArea: number,
-    totalRowsToDisplay:number,
-    alreadyScrolledRows: number,
-    scrollPos:number,
-    rows:Array<any>
-}
-export default class VirtualScroll extends React.Component<VirtualScrollProps,VirtualScrollState> {
-    public didntRanSince:Date|number;
-    public forceRerenderAtleastIn:number;
-    public lastRenderedState:object;
-  constructor(props:VirtualScrollProps) {
-    super(props);
-    this.state = {
-      contentHeight: 0,
-      startRowsFrom: 0,
-      endRowsTo: 0,
-      rowsThatCanBeShownInVisibleArea: 0,
-      alreadyScrolledRows: 0,
-      scrollPos:0,
-      totalRowsToDisplay:0,
-      rows:Array<any>
-    };
-    this.didntRanSince = Date.now();
-    this.forceRerenderAtleastIn = 10;
-    Object.assign({}, this.state);
-    this.lastRenderedState = Object.assign({}, this.state);
+export default class Scroller extends React.Component<ScrollerProps, ScrollerState> {
+  public viewportElement:any;
+  constructor(props: ScrollerProps | Readonly<ScrollerProps>) {
+    super(props)
+    this.state = setInitialState(this.props.settings)
+    this.viewportElement = React.createRef()
+  }
+  
+  componentDidMount() {
+    this.viewportElement.current.scrollTop = this.state.initialPosition
+    if (!this.state.initialPosition) {
+      this.runScroller({ target: { scrollTop: 0 } })
+    }
   }
 
-  componentWillMount() {
-    this.updateContent(this.state.scrollPos || 0);
-  }
-
-  componentWillReceiveProps(newProps:any) {
-    this.updateContent(this.state.scrollPos || 0, newProps);
-  }
-
-  updateContent = (yPos:number, newProps?:any) => {
-    const props = newProps || this.props;
-    this.didntRanSince = Date.now();
-    const virtualScrollContainerHeight = props.scrollContainerHeight > window.innerHeight ? window.innerHeight : props.scrollContainerHeight;
-    const totalRowsToDisplay = props.totalNumberOfRows;
-    const contentHeight = props.totalNumberOfRows * props.rowHeight;
-    const alreadyScrolledRows =(yPos / props.rowHeight);
-    const rowsThatCanBeShownInVisibleArea = Math.ceil(virtualScrollContainerHeight / props.rowHeight);
-    const startRowsFrom = (Math.max(0, alreadyScrolledRows));
-    const endRowsTo = alreadyScrolledRows + rowsThatCanBeShownInVisibleArea;
+  runScroller = ({ target: { scrollTop } }:any):void => {
+    const { totalHeight, toleranceHeight, bufferedItems, settings: { itemHeight, minIndex }} = this.state
+    const index = minIndex + Math.floor((scrollTop - toleranceHeight) / itemHeight)
+    const data = this.props.get(index, bufferedItems)
+    const topPaddingHeight = Math.max((index - minIndex) * itemHeight, 0)
+    const bottomPaddingHeight = Math.max(totalHeight - topPaddingHeight - data.length * itemHeight, 0)
 
     this.setState({
-      contentHeight: contentHeight,
-      startRowsFrom,
-      endRowsTo: endRowsTo,
-      rowsThatCanBeShownInVisibleArea,
-      totalRowsToDisplay,
-      alreadyScrolledRows,
-      scrollPos: yPos,
-      rows: this.props.rows
-    });
+      topPaddingHeight,
+      bottomPaddingHeight,
+      data
+    })
   }
 
-  scrollHook = ($el:any)=> {
-    this.updateContent($el.scrollTop);
-  }
   render() {
-    const { totalNumberOfRows, scrollContainerHeight, rowHeight } = this.props;
-    const totalRowHeight = totalNumberOfRows * rowHeight;
-    const activateVirtualScroll = totalRowHeight > scrollContainerHeight;
-
-    // Finding out maximum height of the container-
-    let virtualScrollHeight = (scrollContainerHeight > window.innerHeight) ? window.innerHeight : scrollContainerHeight;
-    virtualScrollHeight = totalRowHeight < virtualScrollHeight ? totalRowHeight : virtualScrollHeight;
-
+    const { viewportHeight, topPaddingHeight, bottomPaddingHeight, data } = this.state
     return (
-      <div style={{ height: `${virtualScrollHeight}px`, overflowY: 'auto' }}>
+      <Viewport
+        ref={this.viewportElement}
+        onScroll={this.runScroller}
+        style={{ height: viewportHeight }}
+      >
+        <div style={{ height: topPaddingHeight }}></div>
         {
-          activateVirtualScroll ?
-          this.props.rowRenderer(
-            { transform: `translateY(${this.state.startRowsFrom * this.props.rowHeight}px)`, height: `${rowHeight}px` },
-            this.state.startRowsFrom,
-            this.state.endRowsTo,
-            { height: `${totalRowHeight}px` }
-          ) :
-          this.props.rowRenderer(
-            { transform: 'translateY(0px)', height: `${rowHeight}px` },
-            0,
-            totalNumberOfRows,
-            { height: `${totalRowHeight}px` }
-          )
+          data.map(this.props.row)
         }
-      </div>
-    );
+        <div style={{ height: bottomPaddingHeight }}></div>
+      </Viewport>
+    )
   }
-}
+};

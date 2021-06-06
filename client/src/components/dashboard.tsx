@@ -40,6 +40,10 @@ const CenterDiv = styled.div`
   width: 70%;
   overflow-y: scroll;
 `;
+const Item = styled.div`
+  height: 20px;
+`;
+
 
 type user = {
   user: string;
@@ -56,6 +60,22 @@ export interface DashBoardProps {
   history: History;
 }
 
+interface Settings{
+  itemHeight: number,
+    amount: number,
+    tolerance: number,
+    minIndex: number,
+    maxIndex: number,
+    startIndex: number
+}
+const SETTINGS:Settings = {
+  itemHeight: 20,
+  amount: 10,
+  tolerance: 5,
+  minIndex: -9999,
+  maxIndex: 100000,
+  startIndex: 1
+}
 export interface DashBoardState {
 }
 
@@ -67,34 +87,31 @@ export class DashBoard extends React.Component<
   constructor(props: any) {
     super(props);
   }
+
   redirectLogin = () => {
     this.props.history.push({
       pathname: "/"
     });
   };
 
+   getData = (offset:any, limit:any):Array<any> => {
+    const data = []
+    const start = Math.max(SETTINGS.minIndex, offset)
+    const end = Math.min(offset + limit - 1, SETTINGS.maxIndex)
+    console.log(`request [${offset}..${offset + limit - 1}] -> [${start}..${end}] items`)
+    if (start <= end) {
+      for (let i = start; i <= end; i++) {
+        data.push({ index: i, text: `item ${i}` })
+      }
+    }
+    return data
+  }
   
-  renderRows = (fromRow:number, toRow:number, styles:CSSProperties) => {
-    const generatedRows = [];
-    for (let i = fromRow; i < toRow; i++) {
-      generatedRows.push(<li style={styles}>{ 'List item' + (i+1) }</li>);
-    }
-    return generatedRows;
-  }
-
-  scrollList = (e:any)=> {
-    if (this.refs.virtualScroll) {
-      this.refs.virtualScroll.scrollHook(e.target);
-    }
-  }
-
-  contentRenderer =(rowStyles:CSSProperties, fromRow:number, toRow:number, parentStyles:CSSProperties) =>{
-    return (
-      <ul style={parentStyles}> // complete control on list styling 
-        {this.renderRows(fromRow, toRow, rowStyles)}
-      </ul>
-    );
-  }
+  rowTemplate = (item:any) => (
+    <Item key={item.index}>
+      {item.text}
+    </Item>
+  )
   
   render() {
     return (
@@ -103,16 +120,8 @@ export class DashBoard extends React.Component<
           Welcome
         </Title>
         <CenterDiv>
-        <div ref="list" onScroll={this.scrollList}>
-            <VirtualScroll
-                {...this.props}
-                ref="virtualScroll"
-                rows={this.data} // data of around 50000 rows
-                scrollContainerHeight={400} // height of the container that would remain visible
-                totalNumberOfRows={(this.data.length) || 0}
-                rowHeight={25} // for now, only fixed height rows can be rendered in the component
-                rowRenderer={this.contentRenderer.bind(this)} // function for rendering different type of lists 
-            />
+        <div>
+        <VirtualScroll get={this.getData} settings={SETTINGS} row={this.rowTemplate}/>
         </div> 
 
           <button className="btn btn-primary" onClick={this.redirectLogin}>
